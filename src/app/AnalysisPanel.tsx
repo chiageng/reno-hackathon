@@ -1,13 +1,18 @@
 "use client";
 
 import React from 'react';
-import { Card, Tag, Space } from 'antd';
+import { Button, Card, Tag, Space } from 'antd';
+import { PauseOutlined, SoundOutlined } from '@ant-design/icons';
 import { HText, PText } from '@/components/MyText';
 import { colorConfig } from '@/config/colors';
 import type { RoomAnalysis } from '@/lib/openai';
 
 interface AnalysisPanelProps {
   analysis: RoomAnalysis;
+  isNarrationLoading?: boolean;
+  isNarrationPlaying?: boolean;
+  hasNarration?: boolean;
+  onToggleNarration?: () => void;
 }
 
 const tagStyle: React.CSSProperties = {
@@ -16,13 +21,44 @@ const tagStyle: React.CSSProperties = {
   background: colorConfig.backgroundColor,
 };
 
-export default function AnalysisPanel({ analysis }: AnalysisPanelProps) {
+export default function AnalysisPanel({
+  analysis,
+  isNarrationLoading,
+  isNarrationPlaying,
+  hasNarration,
+  onToggleNarration,
+}: AnalysisPanelProps) {
+  const showAudioControl = isNarrationLoading || hasNarration;
+
   return (
     <Card title={<HText variant="h5">What I see</HText>} style={{ width: '100%' }}>
       <Space direction="vertical" size={14} style={{ width: '100%' }}>
-        <PText variant="normal" style={{ fontStyle: 'italic', color: colorConfig.textPrimary }}>
-          &ldquo;{analysis.narrationText}&rdquo;
-        </PText>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          {showAudioControl && (
+            <Button
+              type="primary"
+              shape="circle"
+              size="small"
+              icon={isNarrationPlaying ? <PauseOutlined /> : <SoundOutlined />}
+              onClick={onToggleNarration}
+              loading={isNarrationLoading}
+              disabled={!hasNarration && !isNarrationLoading}
+              aria-label={isNarrationPlaying ? 'Pause narration' : 'Play narration'}
+              style={{ flexShrink: 0, marginTop: 2 }}
+            />
+          )}
+          <PText
+            variant="normal"
+            style={{
+              fontStyle: 'italic',
+              color: colorConfig.textPrimary,
+              flex: 1,
+              margin: 0,
+            }}
+          >
+            &ldquo;{analysis.narrationText}&rdquo;
+          </PText>
+        </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <Tag style={tagStyle}>{analysis.roomType}</Tag>

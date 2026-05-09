@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Skeleton, Space } from 'antd';
-import { useMutation, useQueries } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import SectionContainer from '@/components/SectionContainer';
 import { HText, PText } from '@/components/MyText';
 import { colorConfig } from '@/config/colors';
@@ -19,10 +19,21 @@ interface StyleApiResponse {
   imageDataUrl: string;
 }
 
+interface NarrateApiResponse {
+  audioDataUrl: string;
+}
+
+// 36-byte silent WAV used to capture the iOS gesture for later autoplay.
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
 export default function Home() {
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string>('');
   const [selectedStyle, setSelectedStyle] = useState<StyleKey | null>(null);
+  const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUnlockedRef = useRef(false);
   const { displayErrorMessage } = useMessage();
 
   const {
@@ -68,6 +79,29 @@ export default function Home() {
     })),
   });
 
+  // Voice narration — fires once analysis arrives.
+  const narrationQuery = useQuery({
+    queryKey: ['narration', sessionKey],
+    enabled: !!analysis && !!sessionKey,
+    staleTime: Infinity,
+    retry: 1,
+    queryFn: async (): Promise<NarrateApiResponse> => {
+      if (!analysis) throw new Error('no analysis');
+      const res = await fetch('/api/narrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: analysis.narrationText }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Narration failed');
+      }
+      return res.json() as Promise<NarrateApiResponse>;
+    },
+  });
+
+  const narrationUrl = narrationQuery.data?.audioDataUrl ?? null;
+
   const styleResults: StyleResult[] = STYLE_KEYS.map((style, i) => {
     const q = styleQueries[i];
     return {
@@ -78,16 +112,64 @@ export default function Home() {
     };
   });
 
+  // Autoplay narration when it lands. Already-unlocked audio (see unlockAudio
+  // below) lets iOS Safari honour this even though we're outside the original
+  // gesture window.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !narrationUrl) return;
+    a.src = narrationUrl;
+    a.play().catch((err) => {
+      console.warn('[reno] narration autoplay blocked', err);
+    });
+  }, [narrationUrl]);
+
+  const unlockAudio = () => {
+    if (audioUnlockedRef.current) return;
+    const a = audioRef.current;
+    if (!a) return;
+    // Captured during a real user gesture so iOS allows future play() calls.
+    a.src = SILENT_WAV;
+    a.muted = true;
+    a.play()
+      .then(() => {
+        a.pause();
+        a.muted = false;
+        audioUnlockedRef.current = true;
+      })
+      .catch(() => {
+        // Manual play button is the fallback.
+      });
+  };
+
+  const toggleNarration = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) {
+      a.play().catch((err) => displayErrorMessage(err, 'Could not play narration'));
+    } else {
+      a.pause();
+    }
+  };
+
   const handlePhoto = (dataUrl: string) => {
+    unlockAudio();
     setImageDataUrl(dataUrl);
     setSessionKey(crypto.randomUUID());
     analyze(dataUrl);
   };
 
   const handleReset = () => {
+    const a = audioRef.current;
+    if (a) {
+      a.pause();
+      a.removeAttribute('src');
+      a.load();
+    }
     setImageDataUrl(null);
     setSessionKey('');
     setSelectedStyle(null);
+    setIsNarrationPlaying(false);
     resetAnalysis();
   };
 
@@ -137,7 +219,15 @@ export default function Home() {
             </Card>
           )}
 
-          {analysis && <AnalysisPanel analysis={analysis} />}
+          {analysis && (
+            <AnalysisPanel
+              analysis={analysis}
+              isNarrationLoading={narrationQuery.isFetching}
+              isNarrationPlaying={isNarrationPlaying}
+              hasNarration={!!narrationUrl}
+              onToggleNarration={toggleNarration}
+            />
+          )}
 
           {analysis && imageDataUrl && (
             <StyleGrid results={styleResults} onSelect={setSelectedStyle} />
@@ -152,6 +242,15 @@ export default function Home() {
           )}
         </Space>
       </div>
+
+      <audio
+        ref={audioRef}
+        onPlay={() => setIsNarrationPlaying(true)}
+        onPause={() => setIsNarrationPlaying(false)}
+        onEnded={() => setIsNarrationPlaying(false)}
+        preload="auto"
+        hidden
+      />
 
       {showRedesignView && imageDataUrl && selectedStyle && (
         <RedesignView
