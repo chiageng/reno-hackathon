@@ -1,61 +1,98 @@
 "use client";
 
-import React from 'react';
-import { Button, Space } from 'antd';
-import { CameraOutlined } from '@ant-design/icons';
-import Link from 'next/link';
+import React, { useState } from 'react';
+import { Button, Card, Skeleton, Space } from 'antd';
+import { useMutation } from '@tanstack/react-query';
 import SectionContainer from '@/components/SectionContainer';
 import { HText, PText } from '@/components/MyText';
 import { colorConfig } from '@/config/colors';
+import { useMessage } from '@/utils/common';
+import PhotoUpload from './PhotoUpload';
+import AnalysisPanel from './AnalysisPanel';
+import type { RoomAnalysis } from '@/lib/openai';
 
 export default function Home() {
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const { displayErrorMessage } = useMessage();
+
+  const {
+    mutate: analyze,
+    data: analysis,
+    isPending,
+    reset: resetMutation,
+  } = useMutation({
+    mutationFn: async (dataUrl: string): Promise<RoomAnalysis> => {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageDataUrl: dataUrl }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Analyze failed');
+      }
+      return res.json() as Promise<RoomAnalysis>;
+    },
+    onError: (error) => displayErrorMessage(error, 'Could not analyze the photo'),
+  });
+
+  const handlePhoto = (dataUrl: string) => {
+    setImageDataUrl(dataUrl);
+    analyze(dataUrl);
+  };
+
+  const handleReset = () => {
+    setImageDataUrl(null);
+    resetMutation();
+  };
+
   return (
     <SectionContainer maxWidth="640px">
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          padding: '64px 24px 48px',
-          gap: 24,
-        }}
-      >
-        <HText variant="h1" style={{ color: colorConfig.textPrimary, margin: 0 }}>
-          Reimagine any room in 30 seconds
-        </HText>
-        <PText
-          variant="normal"
-          style={{ color: colorConfig.textSecondary, maxWidth: 480 }}
-        >
-          Take one photo. Get three photorealistic redesigns. Iterate by voice. See
-          every visible item shoppable in Singapore.
-        </PText>
+      <div style={{ padding: '32px 20px 64px' }}>
+        <Space direction="vertical" size={20} style={{ width: '100%' }}>
+          <div style={{ textAlign: 'center' }}>
+            <HText variant="h2" style={{ color: colorConfig.textPrimary, margin: 0 }}>
+              Reimagine any room
+            </HText>
+            <PText variant="normal" style={{ color: colorConfig.textSecondary }}>
+              Take one photo. We&rsquo;ll show you three new ways to see your space.
+            </PText>
+          </div>
 
-        <Space direction="vertical" size={12} style={{ width: '100%', maxWidth: 320 }}>
-          {/* TODO(hackathon): wire up to <PhotoUpload /> + /api/analyze */}
-          <Button
-            type="primary"
-            size="large"
-            icon={<CameraOutlined />}
-            block
-            disabled
-          >
-            Take a photo
-          </Button>
-          <Link href="/demo" style={{ width: '100%' }}>
-            <Button size="large" block>
-              See the demo
-            </Button>
-          </Link>
+          {!imageDataUrl ? (
+            <PhotoUpload onPhoto={handlePhoto} />
+          ) : (
+            <Card styles={{ body: { padding: 0 } }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageDataUrl}
+                alt="Your room"
+                style={{ width: '100%', display: 'block', borderRadius: 8 }}
+              />
+            </Card>
+          )}
+
+          {isPending && (
+            <Card>
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <PText variant="small" style={{ color: colorConfig.textSecondary }}>
+                  Looking at your room…
+                </PText>
+                <Skeleton active paragraph={{ rows: 3 }} />
+              </Space>
+            </Card>
+          )}
+
+          {analysis && <AnalysisPanel analysis={analysis} />}
+
+          {imageDataUrl && !isPending && (
+            <div style={{ textAlign: 'center' }}>
+              <Button type="link" onClick={handleReset}>
+                ← Start over
+              </Button>
+            </div>
+          )}
         </Space>
-
-        <PText
-          variant="small"
-          style={{ color: colorConfig.textMuted, marginTop: 24 }}
-        >
-          Built for the AI Engineer Singapore Hackathon · 2026
-        </PText>
       </div>
     </SectionContainer>
   );
