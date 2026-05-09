@@ -2,24 +2,34 @@
 
 import React, { useState } from 'react';
 import { Button, Card, Skeleton, Space } from 'antd';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueries } from '@tanstack/react-query';
 import SectionContainer from '@/components/SectionContainer';
 import { HText, PText } from '@/components/MyText';
 import { colorConfig } from '@/config/colors';
 import { useMessage } from '@/utils/common';
 import PhotoUpload from './PhotoUpload';
 import AnalysisPanel from './AnalysisPanel';
+import StyleGrid, { type StyleResult } from './StyleGrid';
+import RedesignView, { type RedesignItem } from './RedesignView';
 import type { RoomAnalysis } from '@/lib/openai';
+import { STYLE_KEYS, type StyleKey } from '@/lib/styles';
+
+interface StyleApiResponse {
+  style: StyleKey;
+  imageDataUrl: string;
+}
 
 export default function Home() {
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [sessionKey, setSessionKey] = useState<string>('');
+  const [selectedStyle, setSelectedStyle] = useState<StyleKey | null>(null);
   const { displayErrorMessage } = useMessage();
 
   const {
     mutate: analyze,
     data: analysis,
-    isPending,
-    reset: resetMutation,
+    isPending: isAnalyzing,
+    reset: resetAnalysis,
   } = useMutation({
     mutationFn: async (dataUrl: string): Promise<RoomAnalysis> => {
       const res = await fetch('/api/analyze', {
@@ -36,18 +46,62 @@ export default function Home() {
     onError: (error) => displayErrorMessage(error, 'Could not analyze the photo'),
   });
 
+  // Three parallel image-gen calls — each tile reveals as it lands.
+  const styleQueries = useQueries({
+    queries: STYLE_KEYS.map((style) => ({
+      queryKey: ['style', style, sessionKey],
+      enabled: !!imageDataUrl && !!analysis && !!sessionKey,
+      staleTime: Infinity,
+      retry: 1,
+      queryFn: async (): Promise<StyleApiResponse> => {
+        const res = await fetch('/api/generate-style', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageDataUrl, analysis, style }),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(data.error ?? 'Style generation failed');
+        }
+        return res.json() as Promise<StyleApiResponse>;
+      },
+    })),
+  });
+
+  const styleResults: StyleResult[] = STYLE_KEYS.map((style, i) => {
+    const q = styleQueries[i];
+    return {
+      style,
+      imageDataUrl: q.data?.imageDataUrl ?? null,
+      isLoading: q.isFetching,
+      error: q.error ? (q.error as Error).message : null,
+    };
+  });
+
   const handlePhoto = (dataUrl: string) => {
     setImageDataUrl(dataUrl);
+    setSessionKey(crypto.randomUUID());
     analyze(dataUrl);
   };
 
   const handleReset = () => {
     setImageDataUrl(null);
-    resetMutation();
+    setSessionKey('');
+    setSelectedStyle(null);
+    resetAnalysis();
   };
 
+  const completedItems: RedesignItem[] = styleResults
+    .filter((r): r is StyleResult & { imageDataUrl: string } => !!r.imageDataUrl)
+    .map((r) => ({ style: r.style, afterImage: r.imageDataUrl }));
+
+  const showRedesignView =
+    !!selectedStyle &&
+    !!imageDataUrl &&
+    completedItems.some((it) => it.style === selectedStyle);
+
   return (
-    <SectionContainer maxWidth="640px">
+    <SectionContainer maxWidth="960px">
       <div style={{ padding: '32px 20px 64px' }}>
         <Space direction="vertical" size={20} style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>
@@ -72,7 +126,7 @@ export default function Home() {
             </Card>
           )}
 
-          {isPending && (
+          {isAnalyzing && (
             <Card>
               <Space direction="vertical" size={8} style={{ width: '100%' }}>
                 <PText variant="small" style={{ color: colorConfig.textSecondary }}>
@@ -85,7 +139,11 @@ export default function Home() {
 
           {analysis && <AnalysisPanel analysis={analysis} />}
 
-          {imageDataUrl && !isPending && (
+          {analysis && imageDataUrl && (
+            <StyleGrid results={styleResults} onSelect={setSelectedStyle} />
+          )}
+
+          {imageDataUrl && !isAnalyzing && (
             <div style={{ textAlign: 'center' }}>
               <Button type="link" onClick={handleReset}>
                 ← Start over
@@ -94,6 +152,15 @@ export default function Home() {
           )}
         </Space>
       </div>
+
+      {showRedesignView && imageDataUrl && selectedStyle && (
+        <RedesignView
+          items={completedItems}
+          initialStyle={selectedStyle}
+          beforeImage={imageDataUrl}
+          onBack={() => setSelectedStyle(null)}
+        />
+      )}
     </SectionContainer>
   );
 }
