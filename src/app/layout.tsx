@@ -18,8 +18,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fire Drill",
-  description: "Fire Drill Application",
+  title: "Reno — Reimagine your room in 30 seconds",
+  description:
+    "Take a photo of any room, get three photorealistic redesigns, iterate by voice, and walk through your new space.",
 };
 
 export default function RootLayout({

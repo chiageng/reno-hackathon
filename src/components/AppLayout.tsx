@@ -1,113 +1,65 @@
 "use client";
 
 import React from 'react';
-import { Layout, Menu } from 'antd';
-import {
-  DashboardOutlined,
-  UserOutlined,
-  SettingOutlined,
-  FireOutlined,
-  TeamOutlined,
-  FileTextOutlined,
-  BellOutlined
-} from '@ant-design/icons';
-import { useRouter, usePathname } from 'next/navigation';
+import { Layout } from 'antd';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { colorConfig } from '@/config/colors';
 import { HText, PText } from './MyText';
 
-const { Sider, Content } = Layout;
+const { Header, Content } = Layout;
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-export default function AppLayout({ children }: AppLayoutProps) {
-  const router = useRouter();
-  const pathname = usePathname();
+const HEADER_HEIGHT = 64;
 
-  const menuItems = [
-    {
-      key: '/',
-      icon: <DashboardOutlined />,
-      label: 'Dashboard',
-    },
-    {
-      key: '/users',
-      icon: <UserOutlined />,
-      label: 'Users',
-    },
-    {
-      key: '/teams',
-      icon: <TeamOutlined />,
-      label: 'Teams',
-    },
-    {
-      key: '/drills',
-      icon: <FireOutlined />,
-      label: 'Drills',
-    },
-    {
-      key: '/reports',
-      icon: <FileTextOutlined />,
-      label: 'Reports',
-    },
-    {
-      key: '/notifications',
-      icon: <BellOutlined />,
-      label: 'Notifications',
-    },
-    {
-      key: '/dummy',
-      icon: <SettingOutlined />,
-      label: 'Testing',
-    },
-  ];
+export default function AppLayout({ children }: AppLayoutProps) {
+  const pathname = usePathname();
+  const isDemo = pathname?.startsWith('/demo');
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider
+    <Layout style={{ minHeight: '100vh', background: colorConfig.backgroundColor }}>
+      <Header
         style={{
+          height: HEADER_HEIGHT,
           background: colorConfig.backgroundColor,
-          borderRight: `1px solid ${colorConfig.borderColor}`,
-          padding: '0',
-        }}
-        width={300}
-      >
-        <div style={{
-          height: '80px',
+          borderBottom: `1px solid ${colorConfig.borderColor}`,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-start',
-          marginTop: 16,
-          padding: '0 32px 0 32px',
-          fontWeight: 700,
-          fontSize: '20px',
-          color: colorConfig.textPrimary,
-        }}>
-          <FireOutlined style={{ fontSize: 32, marginRight: 12, color: colorConfig.primaryColor, fontWeight: 900 }} />
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <HText variant="h4">FireDrill</HText>
-            <PText variant="span" style={{ marginTop: -8 }}>Training Simulator</PText>
-          </div>
-        </div>
-        <div style={{ padding: '16px 16px 0 16px' }}>
-          <Menu
-            mode="inline"
-            selectedKeys={[pathname]}
-            items={menuItems}
-            onClick={({ key }) => router.push(key)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-            }}
-          />
-        </div>
-      </Sider>
-      <Layout style={{ background: colorConfig.backgroundColor }}>
-        <Content style={{ background: colorConfig.backgroundColor }}>
-          {children}
-        </Content>
-      </Layout>
+          justifyContent: 'space-between',
+          padding: '0 20px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+        }}
+      >
+        <Link href="/" style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <HText variant="h4" style={{ color: colorConfig.brandAccent, margin: 0 }}>
+            Reno
+          </HText>
+          <PText
+            variant="small"
+            style={{ color: colorConfig.textSecondary, margin: 0 }}
+          >
+            reimagine any room
+          </PText>
+        </Link>
+        <Link
+          href={isDemo ? '/' : '/demo'}
+          style={{
+            color: colorConfig.textSecondary,
+            fontSize: 14,
+            fontWeight: 500,
+          }}
+        >
+          {isDemo ? 'Try yours' : 'See demo'}
+        </Link>
+      </Header>
+      <Content style={{ background: colorConfig.backgroundColor }}>
+        {children}
+      </Content>
     </Layout>
   );
 }
