@@ -12,6 +12,7 @@ import AnalysisPanel from './AnalysisPanel';
 import StyleGrid, { type StyleResult } from './StyleGrid';
 import RedesignView, { type RedesignItem } from './RedesignView';
 import IterationInput from './IterationInput';
+import ShoppingModal from './ShoppingModal';
 import type { RoomAnalysis } from '@/lib/openai';
 import { STYLE_KEYS, STYLE_LABELS, type StyleKey } from '@/lib/styles';
 
@@ -53,6 +54,7 @@ export default function Home() {
   // Chronological log of every prompt the user has submitted this session —
   // simple text record, no navigation. Cleared on Start over.
   const [promptHistory, setPromptHistory] = useState<string[]>([]);
+  const [shoppingOpen, setShoppingOpen] = useState(false);
 
   // Shared audio state — used by both AnalysisPanel and RedesignView.
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -433,7 +435,20 @@ export default function Home() {
             )}
 
           {imageDataUrl && !isAnalyzing && (
-            <div style={{ textAlign: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              {styleResults.some((r) => r.imageDataUrl) && (
+                <Button onClick={() => setShoppingOpen(true)}>
+                  Shopping list & budget
+                </Button>
+              )}
               <Button
                 type="link"
                 onClick={handleReset}
@@ -467,6 +482,11 @@ export default function Home() {
           isLoadingDescriptions={descriptionsQuery.isFetching}
         />
       )}
+
+      <ShoppingModal
+        open={shoppingOpen}
+        onClose={() => setShoppingOpen(false)}
+      />
     </SectionContainer>
   );
 }
