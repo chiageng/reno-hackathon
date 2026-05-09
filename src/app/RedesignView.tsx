@@ -285,7 +285,8 @@ export default function RedesignView({
           gap: 12,
         }}
       >
-        {active && (
+        {/* Cinematic walkthrough hidden — Veo 3 model unavailable. Plumbing kept for re-enable. */}
+        {false && active && (
           <div style={{ display: 'flex' }}>
             <WalkthroughPlayer
               style={active.style}
