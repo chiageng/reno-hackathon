@@ -383,7 +383,8 @@ export default function Home() {
                     variant="small"
                     style={{ color: colorConfig.textSecondary, margin: 0 }}
                   >
-                    Tweak all three designs at once. e.g.{' '}
+                    Tweak all three designs at once. Type a change, or hold the
+                    mic to speak. e.g.{' '}
                     <em>&ldquo;make the sofa green and add a tall plant&rdquo;</em>
                   </PText>
                   <IterationInput

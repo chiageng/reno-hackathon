@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Button, Input, Space } from 'antd';
+import { Button, Input } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
+import VoiceButton from './VoiceButton';
 
 interface IterationInputProps {
   isLoading?: boolean;
@@ -26,10 +27,19 @@ export default function IterationInput({
     setText('');
   };
 
+  // Voice transcripts auto-submit. The transcript shows up immediately in the
+  // page-level "Edits applied" chip log so the user sees what was heard.
+  const handleVoiceTranscript = (transcript: string) => {
+    if (isLoading || disabled) return;
+    onSubmit(transcript);
+    setText('');
+  };
+
   const inactive = disabled || isLoading;
 
   return (
-    <Space.Compact style={{ width: '100%' }}>
+    <div style={{ display: 'flex', gap: 8, width: '100%', alignItems: 'center' }}>
+      <VoiceButton disabled={inactive} onTranscript={handleVoiceTranscript} />
       <Input
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -38,6 +48,7 @@ export default function IterationInput({
         disabled={inactive}
         maxLength={500}
         size="large"
+        style={{ flex: 1 }}
       />
       <Button
         type="primary"
@@ -49,6 +60,6 @@ export default function IterationInput({
       >
         Send
       </Button>
-    </Space.Compact>
+    </div>
   );
 }

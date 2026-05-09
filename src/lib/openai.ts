@@ -21,6 +21,9 @@ export const openai = new OpenAI({ apiKey });
 const VISION_MODEL = 'gpt-4o';
 // Image generation model. gpt-image-1 supports image-to-image edit with a prompt.
 const IMAGE_MODEL = 'gpt-image-1';
+// Speech-to-text. Falls back to whisper-1 if the newer model is unavailable.
+const TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
+const TRANSCRIBE_FALLBACK_MODEL = 'whisper-1';
 
 export interface RoomAnalysis {
   roomType: string;
@@ -142,6 +145,47 @@ export async function iterateStyleImage({
   const b64 = result.data?.[0]?.b64_json;
   if (!b64) throw new Error('Empty image response from gpt-image-1');
   return `data:image/png;base64,${b64}`;
+}
+
+function audioMimeToExt(mimeType: string): string {
+  if (mimeType.includes('mp4')) return 'mp4';
+  if (mimeType.includes('webm')) return 'webm';
+  if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3';
+  if (mimeType.includes('wav')) return 'wav';
+  if (mimeType.includes('ogg')) return 'ogg';
+  return 'webm';
+}
+
+// Transcribes recorded audio to text. Tries the newer model first, falls
+// back to whisper-1 if unsupported on the account. Used by /api/transcribe.
+export async function transcribeAudio(
+  audioBuffer: Buffer,
+  mimeType: string,
+): Promise<string> {
+  const ext = audioMimeToExt(mimeType);
+  const file = await toFile(audioBuffer, `audio.${ext}`, { type: mimeType });
+
+  try {
+    const result = await openai.audio.transcriptions.create({
+      model: TRANSCRIBE_MODEL,
+      file,
+    });
+    return result.text.trim();
+  } catch (err) {
+    console.warn(
+      `[reno] ${TRANSCRIBE_MODEL} failed, retrying with ${TRANSCRIBE_FALLBACK_MODEL}`,
+      err,
+    );
+    // toFile consumes the buffer once; rebuild for the retry.
+    const fallbackFile = await toFile(audioBuffer, `audio.${ext}`, {
+      type: mimeType,
+    });
+    const result = await openai.audio.transcriptions.create({
+      model: TRANSCRIBE_FALLBACK_MODEL,
+      file: fallbackFile,
+    });
+    return result.text.trim();
+  }
 }
 
 // One GPT call returning a designer commentary for each of the three styles,
