@@ -2,7 +2,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from 'antd';
-import { ArrowLeftOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined,
+  LeftOutlined,
+  PauseOutlined,
+  RightOutlined,
+  SoundOutlined,
+} from '@ant-design/icons';
 import { HText, PText } from '@/components/MyText';
 import { colorConfig } from '@/config/colors';
 import ComparisonSlider from './ComparisonSlider';
@@ -11,6 +17,8 @@ import { STYLE_LABELS, STYLE_TAGLINES, type StyleKey } from '@/lib/styles';
 export interface RedesignItem {
   style: StyleKey;
   afterImage: string;
+  description?: string;
+  audioDataUrl?: string;
 }
 
 interface RedesignViewProps {
@@ -18,6 +26,12 @@ interface RedesignViewProps {
   initialStyle: StyleKey;
   beforeImage: string;
   onBack: () => void;
+  /** Centralized audio handlers — see page.tsx for the shared <audio> element */
+  onPlayAudio: (audioDataUrl: string) => void;
+  onPauseAudio: () => void;
+  /** Source of the audio that's currently playing, or null if paused/stopped */
+  playingAudioSrc: string | null;
+  isLoadingDescriptions?: boolean;
 }
 
 export default function RedesignView({
@@ -25,6 +39,10 @@ export default function RedesignView({
   initialStyle,
   beforeImage,
   onBack,
+  onPlayAudio,
+  onPauseAudio,
+  playingAudioSrc,
+  isLoadingDescriptions,
 }: RedesignViewProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const initialIndex = Math.max(
@@ -47,9 +65,43 @@ export default function RedesignView({
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTo({ left: initialIndex * el.clientWidth, behavior: 'auto' });
-    // We only want this once — initialIndex is captured at first render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const active = items[activeIndex];
+  const activeAudio = active?.audioDataUrl;
+
+  // Track which styles have been narrated (auto OR manual) during this view
+  // session. We auto-play each style once on first encounter, then stay silent
+  // on revisits. The manual button is the replay path.
+  const playedStylesRef = useRef<Set<StyleKey>>(new Set());
+  // Tracks the previously-handled active style across renders. Lets us
+  // distinguish a real swipe from a Strict-Mode re-run of this effect, so we
+  // don't pause audio that was just started on the same render cycle.
+  const lastStyleRef = useRef<StyleKey | null>(null);
+
+  // On real style changes: pause prior audio. On every active-style render
+  // where audio is available and the style hasn't been played yet: auto-play.
+  useEffect(() => {
+    if (!active) return;
+
+    const styleChanged = lastStyleRef.current !== active.style;
+    lastStyleRef.current = active.style;
+
+    if (styleChanged) {
+      onPauseAudio();
+    }
+
+    if (!active.audioDataUrl) return;
+    if (playedStylesRef.current.has(active.style)) return;
+    playedStylesRef.current.add(active.style);
+    onPlayAudio(active.audioDataUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.style, active?.audioDataUrl]);
+
+  // Pause-on-close is handled by the parent's onBack handler — keeping it out
+  // of an unmount-cleanup effect avoids React Strict Mode (dev) double-running
+  // it and killing the first auto-play.
 
   const handleScroll = () => {
     const el = scrollerRef.current;
@@ -64,10 +116,21 @@ export default function RedesignView({
     el.scrollTo({ left: idx * el.clientWidth, behavior: 'smooth' });
   };
 
-  const active = items[activeIndex];
   const hasMany = items.length > 1;
   const canPrev = activeIndex > 0;
   const canNext = activeIndex < items.length - 1;
+  const isThisAudioPlaying = !!activeAudio && playingAudioSrc === activeAudio;
+
+  const handleToggleAudio = () => {
+    if (!activeAudio || !active) return;
+    if (isThisAudioPlaying) {
+      onPauseAudio();
+    } else {
+      // Mark as played so the auto-play effect won't re-fire on swipe-away/back.
+      playedStylesRef.current.add(active.style);
+      onPlayAudio(activeAudio);
+    }
+  };
 
   return (
     <div
@@ -152,7 +215,7 @@ export default function RedesignView({
         )}
       </div>
 
-      {/* Horizontal scroll-snap pager — one panel per design */}
+      {/* Horizontal scroll-snap pager */}
       <div
         ref={scrollerRef}
         onScroll={handleScroll}
@@ -188,22 +251,41 @@ export default function RedesignView({
         ))}
       </div>
 
-      {/* Footer hint */}
+      {/* Designer commentary + audio toggle */}
       <div
         style={{
-          padding: '10px 16px',
-          textAlign: 'center',
+          padding: '14px 16px',
           borderTop: `1px solid ${colorConfig.borderColor}`,
+          background: colorConfig.backgroundColor,
         }}
       >
-        <PText
-          variant="small"
-          style={{ color: colorConfig.textMuted, margin: 0 }}
-        >
-          {hasMany
-            ? 'Drag the handle to compare · swipe or use ‹ › for the next style'
-            : 'Drag the handle to compare'}
-        </PText>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <Button
+            type="primary"
+            shape="circle"
+            size="small"
+            icon={isThisAudioPlaying ? <PauseOutlined /> : <SoundOutlined />}
+            onClick={handleToggleAudio}
+            disabled={!activeAudio}
+            loading={!activeAudio && isLoadingDescriptions}
+            aria-label={isThisAudioPlaying ? 'Pause narration' : 'Play narration'}
+            style={{ flexShrink: 0, marginTop: 2 }}
+          />
+          <PText
+            variant="small"
+            style={{
+              margin: 0,
+              flex: 1,
+              color: colorConfig.textPrimary,
+              lineHeight: 1.5,
+            }}
+          >
+            {active?.description ??
+              (isLoadingDescriptions
+                ? 'Loading designer commentary…'
+                : 'No commentary yet — drag the handle to compare before / after.')}
+          </PText>
+        </div>
       </div>
     </div>
   );

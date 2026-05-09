@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, Skeleton, Space } from 'antd';
 import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import SectionContainer from '@/components/SectionContainer';
@@ -23,6 +23,10 @@ interface NarrateApiResponse {
   audioDataUrl: string;
 }
 
+interface DescribeStylesResponse {
+  items: { style: StyleKey; description: string; audioDataUrl: string }[];
+}
+
 // 36-byte silent WAV used to capture the iOS gesture for later autoplay.
 const SILENT_WAV =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
@@ -31,10 +35,48 @@ export default function Home() {
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string>('');
   const [selectedStyle, setSelectedStyle] = useState<StyleKey | null>(null);
-  const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
+
+  // Shared audio state — used by both AnalysisPanel and RedesignView.
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUnlockedRef = useRef(false);
+  const [playingAudioSrc, setPlayingAudioSrc] = useState<string | null>(null);
+
   const { displayErrorMessage } = useMessage();
+
+  const playAudio = useCallback((src: string) => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.src !== src) {
+      a.src = src;
+    } else if (a.ended) {
+      // Same clip finished; reset for a clean replay.
+      a.currentTime = 0;
+    }
+    a.play().catch((err) => {
+      console.warn('[reno] audio play blocked', err);
+    });
+  }, []);
+
+  const pauseAudio = useCallback(() => {
+    audioRef.current?.pause();
+  }, []);
+
+  const unlockAudio = useCallback(() => {
+    if (audioUnlockedRef.current) return;
+    const a = audioRef.current;
+    if (!a) return;
+    a.src = SILENT_WAV;
+    a.muted = true;
+    a.play()
+      .then(() => {
+        a.pause();
+        a.muted = false;
+        audioUnlockedRef.current = true;
+      })
+      .catch(() => {
+        // Manual play button is the fallback.
+      });
+  }, []);
 
   const {
     mutate: analyze,
@@ -79,7 +121,7 @@ export default function Home() {
     })),
   });
 
-  // Voice narration — fires once analysis arrives.
+  // Voice narration of the analysis — fires once analysis arrives.
   const narrationQuery = useQuery({
     queryKey: ['narration', sessionKey],
     enabled: !!analysis && !!sessionKey,
@@ -100,7 +142,36 @@ export default function Home() {
     },
   });
 
+  // Per-design designer commentary + per-design audio narration.
+  const descriptionsQuery = useQuery({
+    queryKey: ['descriptions', sessionKey],
+    enabled: !!analysis && !!sessionKey,
+    staleTime: Infinity,
+    retry: 1,
+    queryFn: async (): Promise<DescribeStylesResponse> => {
+      const res = await fetch('/api/describe-styles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysis }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Description failed');
+      }
+      return res.json() as Promise<DescribeStylesResponse>;
+    },
+  });
+
   const narrationUrl = narrationQuery.data?.audioDataUrl ?? null;
+  const descriptionsByStyle: Partial<
+    Record<StyleKey, { description: string; audioDataUrl: string }>
+  > = {};
+  descriptionsQuery.data?.items.forEach((item) => {
+    descriptionsByStyle[item.style] = {
+      description: item.description,
+      audioDataUrl: item.audioDataUrl,
+    };
+  });
 
   const styleResults: StyleResult[] = STYLE_KEYS.map((style, i) => {
     const q = styleQueries[i];
@@ -112,43 +183,21 @@ export default function Home() {
     };
   });
 
-  // Autoplay narration when it lands. Already-unlocked audio (see unlockAudio
-  // below) lets iOS Safari honour this even though we're outside the original
-  // gesture window.
+  // Auto-play the analysis narration once it lands (only if no other audio
+  // is currently playing — so swiping between styles doesn't get hijacked).
   useEffect(() => {
-    const a = audioRef.current;
-    if (!a || !narrationUrl) return;
-    a.src = narrationUrl;
-    a.play().catch((err) => {
-      console.warn('[reno] narration autoplay blocked', err);
-    });
+    if (!narrationUrl) return;
+    if (playingAudioSrc) return; // something else is already playing
+    playAudio(narrationUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [narrationUrl]);
 
-  const unlockAudio = () => {
-    if (audioUnlockedRef.current) return;
-    const a = audioRef.current;
-    if (!a) return;
-    // Captured during a real user gesture so iOS allows future play() calls.
-    a.src = SILENT_WAV;
-    a.muted = true;
-    a.play()
-      .then(() => {
-        a.pause();
-        a.muted = false;
-        audioUnlockedRef.current = true;
-      })
-      .catch(() => {
-        // Manual play button is the fallback.
-      });
-  };
-
-  const toggleNarration = () => {
-    const a = audioRef.current;
-    if (!a) return;
-    if (a.paused) {
-      a.play().catch((err) => displayErrorMessage(err, 'Could not play narration'));
+  const handleAnalysisToggle = () => {
+    if (!narrationUrl) return;
+    if (playingAudioSrc === narrationUrl) {
+      pauseAudio();
     } else {
-      a.pause();
+      playAudio(narrationUrl);
     }
   };
 
@@ -159,6 +208,11 @@ export default function Home() {
     analyze(dataUrl);
   };
 
+  const handleCloseRedesign = useCallback(() => {
+    pauseAudio();
+    setSelectedStyle(null);
+  }, [pauseAudio]);
+
   const handleReset = () => {
     const a = audioRef.current;
     if (a) {
@@ -166,16 +220,21 @@ export default function Home() {
       a.removeAttribute('src');
       a.load();
     }
+    setPlayingAudioSrc(null);
     setImageDataUrl(null);
     setSessionKey('');
     setSelectedStyle(null);
-    setIsNarrationPlaying(false);
     resetAnalysis();
   };
 
   const completedItems: RedesignItem[] = styleResults
     .filter((r): r is StyleResult & { imageDataUrl: string } => !!r.imageDataUrl)
-    .map((r) => ({ style: r.style, afterImage: r.imageDataUrl }));
+    .map((r) => ({
+      style: r.style,
+      afterImage: r.imageDataUrl,
+      description: descriptionsByStyle[r.style]?.description,
+      audioDataUrl: descriptionsByStyle[r.style]?.audioDataUrl,
+    }));
 
   const showRedesignView =
     !!selectedStyle &&
@@ -223,9 +282,11 @@ export default function Home() {
             <AnalysisPanel
               analysis={analysis}
               isNarrationLoading={narrationQuery.isFetching}
-              isNarrationPlaying={isNarrationPlaying}
+              isNarrationPlaying={
+                !!narrationUrl && playingAudioSrc === narrationUrl
+              }
               hasNarration={!!narrationUrl}
-              onToggleNarration={toggleNarration}
+              onToggleNarration={handleAnalysisToggle}
             />
           )}
 
@@ -245,9 +306,9 @@ export default function Home() {
 
       <audio
         ref={audioRef}
-        onPlay={() => setIsNarrationPlaying(true)}
-        onPause={() => setIsNarrationPlaying(false)}
-        onEnded={() => setIsNarrationPlaying(false)}
+        onPlay={() => setPlayingAudioSrc(audioRef.current?.src ?? null)}
+        onPause={() => setPlayingAudioSrc(null)}
+        onEnded={() => setPlayingAudioSrc(null)}
         preload="auto"
         hidden
       />
@@ -257,7 +318,11 @@ export default function Home() {
           items={completedItems}
           initialStyle={selectedStyle}
           beforeImage={imageDataUrl}
-          onBack={() => setSelectedStyle(null)}
+          onBack={handleCloseRedesign}
+          onPlayAudio={playAudio}
+          onPauseAudio={pauseAudio}
+          playingAudioSrc={playingAudioSrc}
+          isLoadingDescriptions={descriptionsQuery.isFetching}
         />
       )}
     </SectionContainer>

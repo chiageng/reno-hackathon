@@ -1,7 +1,11 @@
 // Server-only — never import this file from a client component.
 // All OpenAI calls (vision, image gen, STT) flow through helpers in this module.
 import OpenAI, { toFile } from 'openai';
-import { VISION_ANALYSIS_PROMPT, buildStylePrompt } from './prompts';
+import {
+  VISION_ANALYSIS_PROMPT,
+  buildStylePrompt,
+  buildDesignDescriptionsPrompt,
+} from './prompts';
 import type { StyleKey } from './styles';
 
 const apiKey = process.env.OPENAI_API_KEY;
@@ -105,4 +109,41 @@ export async function generateStyleImage({
   const b64 = result.data?.[0]?.b64_json;
   if (!b64) throw new Error('Empty image response from gpt-image-1');
   return `data:image/png;base64,${b64}`;
+}
+
+// One GPT call returning a designer commentary for each of the three styles,
+// tailored to this room's analysis. Used to drive per-design narration in the
+// comparison view.
+export async function generateDesignDescriptions(
+  analysis: RoomAnalysis,
+): Promise<Record<StyleKey, string>> {
+  const completion = await openai.chat.completions.create({
+    model: VISION_MODEL,
+    response_format: { type: 'json_object' },
+    max_tokens: 600,
+    messages: [
+      {
+        role: 'user',
+        content: buildDesignDescriptionsPrompt(analysis),
+      },
+    ],
+  });
+
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error('Empty response from descriptions model');
+
+  const parsed = JSON.parse(text) as Partial<Record<StyleKey, string>>;
+  if (
+    typeof parsed.scandi !== 'string' ||
+    typeof parsed.japandi !== 'string' ||
+    typeof parsed.industrial !== 'string'
+  ) {
+    throw new Error('Descriptions response missing one or more styles');
+  }
+
+  return {
+    scandi: parsed.scandi.trim(),
+    japandi: parsed.japandi.trim(),
+    industrial: parsed.industrial.trim(),
+  };
 }

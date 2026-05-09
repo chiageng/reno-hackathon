@@ -25,6 +25,33 @@ const STYLE_DESCRIPTIONS: Record<StyleKey, string> = {
     'Exposed brick or concrete accent wall, dark metal fixtures, leather upholstery, edison bulbs, dark stained wood, urban warehouse feel.',
 };
 
+export function buildDesignDescriptionsPrompt(analysis: RoomAnalysis): string {
+  const keyItems = analysis.keyElements.length
+    ? analysis.keyElements.join(', ')
+    : 'the existing furniture';
+
+  return `You are an interior designer talking to a homeowner who just saw three redesigns of their room. Their room:
+- Type: ${analysis.roomType}
+- Size: ~${analysis.estimatedSizeM2} m²
+- Lighting: ${analysis.lighting}
+- Current style: ${analysis.currentStyle}
+- Key items: ${keyItems}
+
+Write a short, warm one-paragraph designer commentary (UNDER 45 WORDS) for EACH of the three styles below. Speak in first person, directly to the homeowner. Each commentary should:
+- Open with what makes this style click for THIS specific room (lighting, size, mood, current items)
+- Mention one specific design choice that elevates the space
+- Feel intuitive and conversational, not technical
+- Read aloud naturally — these will be spoken by a voice actor
+
+Styles:
+1. Scandi
+2. Japandi
+3. Industrial
+
+Return ONLY this JSON shape, no markdown:
+{ "scandi": "…", "japandi": "…", "industrial": "…" }`;
+}
+
 export function buildStylePrompt(style: StyleKey, analysis: RoomAnalysis): string {
   const keyItems = analysis.keyElements.length
     ? analysis.keyElements.join(', ')
