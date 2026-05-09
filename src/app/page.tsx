@@ -57,6 +57,10 @@ export default function Home() {
   const [promptHistory, setPromptHistory] = useState<string[]>([]);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
+  // Cache of generated Veo 3 walkthrough video URLs, per style. Cleared on reset.
+  const [walkthroughCache, setWalkthroughCache] = useState<
+    Partial<Record<StyleKey, string>>
+  >({});
 
   // Shared audio state — used by both AnalysisPanel and RedesignView.
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -307,6 +311,7 @@ export default function Home() {
     setIteratedImages({});
     setIteratingStyles(new Set());
     setPromptHistory([]);
+    setWalkthroughCache({});
     resetAnalysis();
   };
 
@@ -487,6 +492,10 @@ export default function Home() {
           onPauseAudio={pauseAudio}
           playingAudioSrc={playingAudioSrc}
           isLoadingDescriptions={descriptionsQuery.isFetching}
+          walkthroughCache={walkthroughCache}
+          onCacheWalkthrough={(style, videoUrl) =>
+            setWalkthroughCache((prev) => ({ ...prev, [style]: videoUrl }))
+          }
         />
       )}
 

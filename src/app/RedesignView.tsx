@@ -12,6 +12,7 @@ import {
 import { HText, PText } from '@/components/MyText';
 import { colorConfig } from '@/config/colors';
 import ComparisonSlider from './ComparisonSlider';
+import WalkthroughPlayer from './WalkthroughPlayer';
 import { STYLE_LABELS, STYLE_TAGLINES, type StyleKey } from '@/lib/styles';
 
 export interface RedesignItem {
@@ -33,6 +34,9 @@ interface RedesignViewProps {
   /** Source of the audio that's currently playing, or null if paused/stopped */
   playingAudioSrc: string | null;
   isLoadingDescriptions?: boolean;
+  /** Per-style walkthrough cache and setter, owned by page.tsx */
+  walkthroughCache: Partial<Record<StyleKey, string>>;
+  onCacheWalkthrough: (style: StyleKey, videoUrl: string) => void;
 }
 
 export default function RedesignView({
@@ -44,6 +48,8 @@ export default function RedesignView({
   onPauseAudio,
   playingAudioSrc,
   isLoadingDescriptions,
+  walkthroughCache,
+  onCacheWalkthrough,
 }: RedesignViewProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const initialIndex = Math.max(
@@ -268,14 +274,28 @@ export default function RedesignView({
         ))}
       </div>
 
-      {/* Designer commentary + audio toggle */}
+      {/* Walkthrough action + designer commentary + audio toggle */}
       <div
         style={{
-          padding: '14px 16px',
+          padding: '12px 16px 14px',
           borderTop: `1px solid ${colorConfig.borderColor}`,
           background: colorConfig.backgroundColor,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
         }}
       >
+        {active && (
+          <div style={{ display: 'flex' }}>
+            <WalkthroughPlayer
+              style={active.style}
+              imageDataUrl={active.afterImage}
+              cachedVideoUrl={walkthroughCache[active.style]}
+              onCached={onCacheWalkthrough}
+            />
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <Button
             type="primary"
