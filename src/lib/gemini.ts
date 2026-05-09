@@ -17,7 +17,9 @@ if (!apiKey) {
 export const gemini = new GoogleGenAI({ apiKey: apiKey ?? '' });
 
 // Default Veo 3 model. Override via GEMINI_VEO_MODEL if a newer version ships.
-const VEO_MODEL = process.env.GEMINI_VEO_MODEL ?? 'veo-3.0-generate-preview';
+// The original `veo-3.0-generate-preview` was retired when Veo 3 went GA.
+// Use `veo-3.0-fast-generate-001` for ~2x faster jobs at lower fidelity.
+const VEO_MODEL = process.env.GEMINI_VEO_MODEL ?? 'veo-3.0-generate-001';
 
 const PRERENDERED_DIR = join(process.cwd(), 'public', 'demo');
 
