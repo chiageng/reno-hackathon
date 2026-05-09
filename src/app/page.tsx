@@ -13,6 +13,7 @@ import StyleGrid, { type StyleResult } from './StyleGrid';
 import RedesignView, { type RedesignItem } from './RedesignView';
 import IterationInput from './IterationInput';
 import ShoppingModal from './ShoppingModal';
+import InsightsModal from './InsightsModal';
 import type { RoomAnalysis } from '@/lib/openai';
 import { STYLE_KEYS, STYLE_LABELS, type StyleKey } from '@/lib/styles';
 
@@ -55,6 +56,7 @@ export default function Home() {
   // simple text record, no navigation. Cleared on Start over.
   const [promptHistory, setPromptHistory] = useState<string[]>([]);
   const [shoppingOpen, setShoppingOpen] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
 
   // Shared audio state — used by both AnalysisPanel and RedesignView.
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -444,6 +446,11 @@ export default function Home() {
                 flexWrap: 'wrap',
               }}
             >
+              {analysis && (
+                <Button onClick={() => setInsightsOpen(true)}>
+                  Renovation insights
+                </Button>
+              )}
               {styleResults.some((r) => r.imageDataUrl) && (
                 <Button onClick={() => setShoppingOpen(true)}>
                   Shopping list & budget
@@ -486,6 +493,13 @@ export default function Home() {
       <ShoppingModal
         open={shoppingOpen}
         onClose={() => setShoppingOpen(false)}
+      />
+
+      <InsightsModal
+        open={insightsOpen}
+        onClose={() => setInsightsOpen(false)}
+        analysis={analysis ?? null}
+        sessionKey={sessionKey}
       />
     </SectionContainer>
   );

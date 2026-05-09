@@ -6,6 +6,7 @@ import {
   buildStylePrompt,
   buildDesignDescriptionsPrompt,
   buildIteratePrompt,
+  buildInsightsPrompt,
 } from './prompts';
 import type { StyleKey } from './styles';
 
@@ -186,6 +187,126 @@ export async function transcribeAudio(
     });
     return result.text.trim();
   }
+}
+
+export interface RenovationCost {
+  category: string;
+  description: string;
+  lowSGD: number;
+  highSGD: number;
+}
+
+export type ActionStepCategory =
+  | 'preparation'
+  | 'walls'
+  | 'flooring'
+  | 'lighting'
+  | 'carpentry'
+  | 'furniture'
+  | 'decor'
+  | 'electrical'
+  | 'other';
+
+export interface ActionStep {
+  step: number;
+  title: string;
+  description: string;
+  category: ActionStepCategory;
+}
+
+export interface RenovationInsights {
+  summary: string;
+  costs: RenovationCost[];
+  totalLowSGD: number;
+  totalHighSGD: number;
+  timelineLowWeeks: number;
+  timelineHighWeeks: number;
+  actionPlan: ActionStep[];
+}
+
+const ACTION_CATEGORIES: ReadonlySet<ActionStepCategory> = new Set([
+  'preparation',
+  'walls',
+  'flooring',
+  'lighting',
+  'carpentry',
+  'furniture',
+  'decor',
+  'electrical',
+  'other',
+]);
+
+function asCategory(value: unknown): ActionStepCategory {
+  if (typeof value === 'string' && ACTION_CATEGORIES.has(value as ActionStepCategory)) {
+    return value as ActionStepCategory;
+  }
+  return 'other';
+}
+
+// One GPT call returning a renovation cost breakdown + step-by-step plan,
+// tailored to the analyzed room. Used by /api/insights.
+export async function generateRenovationInsights(
+  analysis: RoomAnalysis,
+): Promise<RenovationInsights> {
+  const completion = await openai.chat.completions.create({
+    model: VISION_MODEL,
+    response_format: { type: 'json_object' },
+    max_tokens: 1500,
+    messages: [
+      {
+        role: 'user',
+        content: buildInsightsPrompt(analysis),
+      },
+    ],
+  });
+
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error('Empty response from insights model');
+
+  const parsed = JSON.parse(text) as Partial<RenovationInsights> & {
+    costs?: Partial<RenovationCost>[];
+    actionPlan?: Partial<ActionStep>[];
+  };
+
+  if (
+    typeof parsed.summary !== 'string' ||
+    !Array.isArray(parsed.costs) ||
+    !Array.isArray(parsed.actionPlan)
+  ) {
+    throw new Error('Insights response missing required fields');
+  }
+
+  const costs: RenovationCost[] = parsed.costs.map((c) => ({
+    category: typeof c.category === 'string' ? c.category : 'Misc',
+    description: typeof c.description === 'string' ? c.description : '',
+    lowSGD: typeof c.lowSGD === 'number' ? c.lowSGD : 0,
+    highSGD: typeof c.highSGD === 'number' ? c.highSGD : 0,
+  }));
+
+  const actionPlan: ActionStep[] = parsed.actionPlan.map((s, i) => ({
+    step: typeof s.step === 'number' ? s.step : i + 1,
+    title: typeof s.title === 'string' ? s.title : `Step ${i + 1}`,
+    description: typeof s.description === 'string' ? s.description : '',
+    category: asCategory(s.category),
+  }));
+
+  return {
+    summary: parsed.summary,
+    costs,
+    totalLowSGD:
+      typeof parsed.totalLowSGD === 'number'
+        ? parsed.totalLowSGD
+        : costs.reduce((sum, c) => sum + c.lowSGD, 0),
+    totalHighSGD:
+      typeof parsed.totalHighSGD === 'number'
+        ? parsed.totalHighSGD
+        : costs.reduce((sum, c) => sum + c.highSGD, 0),
+    timelineLowWeeks:
+      typeof parsed.timelineLowWeeks === 'number' ? parsed.timelineLowWeeks : 2,
+    timelineHighWeeks:
+      typeof parsed.timelineHighWeeks === 'number' ? parsed.timelineHighWeeks : 6,
+    actionPlan,
+  };
 }
 
 // One GPT call returning a designer commentary for each of the three styles,

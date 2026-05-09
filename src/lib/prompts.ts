@@ -52,6 +52,58 @@ Return ONLY this JSON shape, no markdown:
 { "scandi": "…", "japandi": "…", "industrial": "…" }`;
 }
 
+export function buildInsightsPrompt(analysis: RoomAnalysis): string {
+  const keyItems = analysis.keyElements.length
+    ? analysis.keyElements.join(', ')
+    : 'the existing furniture';
+  const fixed = analysis.fixedElements.length
+    ? analysis.fixedElements.join(', ')
+    : 'no notable fixed elements';
+
+  return `You are a Singapore-based interior renovation contractor giving a homeowner a realistic project quote and plan. Use 2026 SG market prices (HDB / mid-tier condo standard).
+
+The room:
+- Type: ${analysis.roomType}
+- Size: ~${analysis.estimatedSizeM2} m²
+- Lighting: ${analysis.lighting}
+- Current style: ${analysis.currentStyle}
+- Key items: ${keyItems}
+- Fixed elements (must work around): ${fixed}
+
+The user has just seen three redesigns (Scandi, Japandi, Industrial) of this room. They now want a realistic renovation plan that would let them get to a redesigned look like those.
+
+Return ONLY this JSON shape, no markdown:
+
+{
+  "summary": "2–3 sentences of conversational designer-contractor commentary on the renovation scope. First person, warm, honest about what's involved.",
+  "costs": [
+    {
+      "category": "Painting (walls + ceiling)",
+      "description": "One short sentence on what's involved.",
+      "lowSGD": <number>,
+      "highSGD": <number>
+    }
+    // 5–7 entries total. Cover, where relevant: painting, flooring,
+    // lighting installation, carpentry / built-ins, refurbishment / patch-up,
+    // decor / soft furnishings, optional electrical or aircon work.
+    // DO NOT include furniture purchases — that is shown separately.
+  ],
+  "totalLowSGD": <sum>,
+  "totalHighSGD": <sum>,
+  "timelineLowWeeks": <number>,
+  "timelineHighWeeks": <number>,
+  "actionPlan": [
+    {
+      "step": 1,
+      "title": "Short imperative title (≤6 words)",
+      "description": "One sentence saying what happens in this step.",
+      "category": "preparation" // one of: preparation, walls, flooring, lighting, carpentry, furniture, decor, electrical, other
+    }
+    // 6–10 steps total, in chronological order.
+  ]
+}`;
+}
+
 export function buildIteratePrompt(editInstruction: string): string {
   return `Edit the provided redesign image with this change: "${editInstruction}"
 
