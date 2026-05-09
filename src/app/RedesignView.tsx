@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button } from 'antd';
+import { Button, Spin } from 'antd';
 import {
   ArrowLeftOutlined,
   LeftOutlined,
@@ -19,6 +19,7 @@ export interface RedesignItem {
   afterImage: string;
   description?: string;
   audioDataUrl?: string;
+  isIterating?: boolean;
 }
 
 interface RedesignViewProps {
@@ -71,17 +72,11 @@ export default function RedesignView({
   const active = items[activeIndex];
   const activeAudio = active?.audioDataUrl;
 
-  // Track which styles have been narrated (auto OR manual) during this view
-  // session. We auto-play each style once on first encounter, then stay silent
-  // on revisits. The manual button is the replay path.
+  // Track which styles have been narrated during this view session — auto-play
+  // each style once on first encounter, stay silent on revisits.
   const playedStylesRef = useRef<Set<StyleKey>>(new Set());
-  // Tracks the previously-handled active style across renders. Lets us
-  // distinguish a real swipe from a Strict-Mode re-run of this effect, so we
-  // don't pause audio that was just started on the same render cycle.
   const lastStyleRef = useRef<StyleKey | null>(null);
 
-  // On real style changes: pause prior audio. On every active-style render
-  // where audio is available and the style hasn't been played yet: auto-play.
   useEffect(() => {
     if (!active) return;
 
@@ -98,10 +93,6 @@ export default function RedesignView({
     onPlayAudio(active.audioDataUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.style, active?.audioDataUrl]);
-
-  // Pause-on-close is handled by the parent's onBack handler — keeping it out
-  // of an unmount-cleanup effect avoids React Strict Mode (dev) double-running
-  // it and killing the first auto-play.
 
   const handleScroll = () => {
     const el = scrollerRef.current;
@@ -126,7 +117,6 @@ export default function RedesignView({
     if (isThisAudioPlaying) {
       onPauseAudio();
     } else {
-      // Mark as played so the auto-play effect won't re-fire on swipe-away/back.
       playedStylesRef.current.add(active.style);
       onPlayAudio(activeAudio);
     }
@@ -241,12 +231,39 @@ export default function RedesignView({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              position: 'relative',
             }}
           >
             <ComparisonSlider
               beforeImage={beforeImage}
               afterImage={item.afterImage}
             />
+            {item.isIterating && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(45, 41, 42, 0.7)',
+                  color: 'white',
+                  gap: 12,
+                  borderRadius: 12,
+                  zIndex: 5,
+                  pointerEvents: 'none',
+                }}
+              >
+                <Spin size="large" />
+                <PText
+                  variant="normal"
+                  style={{ color: 'white', margin: 0, fontWeight: 600 }}
+                >
+                  Updating this design…
+                </PText>
+              </div>
+            )}
           </div>
         ))}
       </div>

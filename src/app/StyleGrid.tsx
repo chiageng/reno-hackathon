@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Card, Skeleton, Tag } from 'antd';
+import { Card, Skeleton, Spin, Tag } from 'antd';
 import { LoadingOutlined, RightOutlined, WarningOutlined } from '@ant-design/icons';
 import { HText, PText } from '@/components/MyText';
 import { colorConfig } from '@/config/colors';
@@ -11,6 +11,7 @@ export interface StyleResult {
   style: StyleKey;
   imageDataUrl: string | null;
   isLoading: boolean;
+  isIterating: boolean;
   error: string | null;
 }
 
@@ -24,7 +25,14 @@ const TILE_ASPECT = '4 / 3';
 export default function StyleGrid({ results, onSelect }: StyleGridProps) {
   // Render in a fixed order regardless of completion order, so the layout doesn't jump.
   const ordered = STYLE_KEYS.map(
-    (s) => results.find((r) => r.style === s) ?? { style: s, imageDataUrl: null, isLoading: true, error: null },
+    (s) =>
+      results.find((r) => r.style === s) ?? {
+        style: s,
+        imageDataUrl: null,
+        isLoading: true,
+        isIterating: false,
+        error: null,
+      },
   );
 
   return (
@@ -40,7 +48,7 @@ export default function StyleGrid({ results, onSelect }: StyleGridProps) {
         }}
       >
         {ordered.map((r) => {
-          const ready = !!r.imageDataUrl;
+          const ready = !!r.imageDataUrl && !r.isIterating;
           return (
             <Card
               key={r.style}
@@ -56,6 +64,7 @@ export default function StyleGrid({ results, onSelect }: StyleGridProps) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     overflow: 'hidden',
+                    position: 'relative',
                   }}
                 >
                   {r.imageDataUrl ? (
@@ -81,6 +90,29 @@ export default function StyleGrid({ results, onSelect }: StyleGridProps) {
                   ) : (
                     <div style={{ width: '100%', padding: 24 }}>
                       <Skeleton.Image active style={{ width: '100%', height: '100%' }} />
+                    </div>
+                  )}
+                  {r.isIterating && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(45, 41, 42, 0.65)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        color: 'white',
+                      }}
+                    >
+                      <Spin size="large" />
+                      <PText
+                        variant="small"
+                        style={{ color: 'white', margin: 0, fontWeight: 500 }}
+                      >
+                        Updating…
+                      </PText>
                     </div>
                   )}
                 </div>

@@ -5,6 +5,7 @@ import {
   VISION_ANALYSIS_PROMPT,
   buildStylePrompt,
   buildDesignDescriptionsPrompt,
+  buildIteratePrompt,
 } from './prompts';
 import type { StyleKey } from './styles';
 
@@ -96,6 +97,38 @@ export async function generateStyleImage({
   const file = await toFile(buffer, `room.${ext}`, { type: mimeType });
 
   const prompt = buildStylePrompt(styleKey, analysis);
+
+  const result = await openai.images.edit({
+    model: IMAGE_MODEL,
+    image: file,
+    prompt,
+    size: '1024x1024',
+    quality: 'medium',
+    n: 1,
+  });
+
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) throw new Error('Empty image response from gpt-image-1');
+  return `data:image/png;base64,${b64}`;
+}
+
+interface IterateOpts {
+  baseImageDataUrl: string;
+  editInstruction: string;
+}
+
+// Edits an existing redesign with a free-form instruction (e.g. "make the
+// sofa green and add a tall plant"). Used by /api/iterate to refine a single
+// style. Returns a fresh data: URL (PNG base64).
+export async function iterateStyleImage({
+  baseImageDataUrl,
+  editInstruction,
+}: IterateOpts): Promise<string> {
+  const { buffer, mimeType } = dataUrlToBuffer(baseImageDataUrl);
+  const ext = mimeType.split('/')[1] ?? 'png';
+  const file = await toFile(buffer, `redesign.${ext}`, { type: mimeType });
+
+  const prompt = buildIteratePrompt(editInstruction);
 
   const result = await openai.images.edit({
     model: IMAGE_MODEL,

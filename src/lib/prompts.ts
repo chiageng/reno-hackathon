@@ -52,6 +52,12 @@ Return ONLY this JSON shape, no markdown:
 { "scandi": "…", "japandi": "…", "industrial": "…" }`;
 }
 
+export function buildIteratePrompt(editInstruction: string): string {
+  return `Edit the provided redesign image with this change: "${editInstruction}"
+
+Preserve everything else in the image — same style, same lighting, same composition, same windows / walls / floor / ceiling. Only modify what the instruction calls for. The result must remain a photorealistic interior photograph in the same direction as the input.`;
+}
+
 export function buildStylePrompt(style: StyleKey, analysis: RoomAnalysis): string {
   const keyItems = analysis.keyElements.length
     ? analysis.keyElements.join(', ')
